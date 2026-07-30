@@ -18,11 +18,11 @@
   :root{--obs:#4f46e5;--sim:#0f9d6b;--meas:#d98a14;--hidbd:#dde4ee;}
   html,body{height:100%;}
   body{margin:0;display:flex;flex-direction:column;overflow:hidden;max-width:100vw;}
-  .pg-top{flex:0 0 auto;height:56px;display:flex;align-items:center;gap:13px;padding:0 clamp(14px,3vw,22px);background:rgba(255,255,255,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);z-index:20;}
-  .pg-top .brand{font-family:var(--font-serif);font-weight:700;font-size:1.05rem;color:var(--ink);text-decoration:none;display:flex;align-items:center;gap:7px;}
+  .pg-top{flex:0 0 auto;height:56px;display:flex;align-items:center;gap:13px;padding:0 clamp(14px,3vw,22px);background:rgba(255,255,255,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);z-index:20;min-width:0;overflow:hidden;}
+  .pg-top .brand{font-family:var(--font-serif);font-weight:700;font-size:1.05rem;color:var(--ink);text-decoration:none;display:flex;align-items:center;gap:7px;flex:none;}
   .pg-top .om-mark{width:20px;height:20px;border-radius:4.5px;flex:none;display:block;}
   .pg-top .sub{font-size:.8rem;color:var(--muted);}
-  .pg-nav{margin-left:auto;display:flex;align-items:center;gap:clamp(10px,2vw,20px);}
+  .pg-nav{margin-left:auto;display:flex;align-items:center;gap:clamp(10px,2vw,20px);min-width:0;max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;}
   .pg-nav a{font-size:.82rem;color:var(--muted);text-decoration:none;letter-spacing:.02em;border-bottom:2px solid transparent;padding:2px 0;white-space:nowrap;}
   .pg-nav a:hover{color:var(--accent);}
   .pg-nav a.active{color:var(--ink);border-bottom-color:var(--accent);}
@@ -100,14 +100,15 @@
      the static map data, with the original ingress waiting behind it. */
   body.lin-open .pg-body{display:none;}
   body.lin-open .pg-main{flex:0 0 auto;}
-  .lin-stage{display:none;flex:1 1 auto;min-height:0;overflow-y:auto;background:var(--surface);}
+  .lin-stage{display:none;flex:1 1 auto;min-width:0;max-width:100vw;min-height:0;overflow-x:hidden;overflow-y:auto;background:var(--surface);}
   body.lin-open .lin-stage{display:block;}
   .lin-bar{min-height:40px;display:flex;align-items:center;justify-content:space-between;
     gap:18px;padding:0 26px;}
   .lin-bar a,.lin-bar button,.lin-ingress button{font:600 .78rem var(--font-sans);color:var(--accent);
     background:none;border:0;padding:0;cursor:pointer;text-decoration:none;}
   .lin-bar a:hover,.lin-bar button:hover,.lin-ingress button:hover{text-decoration:underline;}
-  .lin-actions{display:flex;align-items:baseline;justify-content:flex-end;gap:6px 20px;flex-wrap:wrap;}
+  .lin-actions{display:flex;align-items:baseline;justify-content:flex-end;gap:6px 20px;flex-wrap:wrap;min-width:0;}
+  .lin-actions a{min-width:0;overflow-wrap:anywhere;}
   .lin-ingress{max-width:1240px;margin:0 auto;padding:8px 26px 0;}
   .lin-ingress[hidden]{display:none;}
   .lin-ingress-row{display:grid;grid-template-columns:minmax(280px,1fr) minmax(220px,.55fr) auto;
@@ -122,13 +123,15 @@
   .lin-example-links a{color:var(--accent);text-decoration:none;}
   .lin-example-links a:hover{text-decoration:underline;}
   .rec{display:flex;flex-direction:column;gap:6px;}
-  .rec-head{display:flex;align-items:baseline;justify-content:space-between;gap:24px;min-width:0;}
-  .rec-head-meta{display:flex;align-items:baseline;justify-content:flex-end;flex-wrap:wrap;
-    gap:3px 12px;margin:0;min-width:0;text-align:right;font-family:var(--font-mono,monospace);
+  .rec-head{display:grid;grid-template-columns:minmax(0,1fr) minmax(24rem,34rem);align-items:start;gap:6px 24px;min-width:0;}
+  .rec-head>.rec-lede{white-space:normal;}
+  .rec-head>.rec-doi{grid-column:1/-1;}
+  .rec-head-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:baseline;
+    gap:3px 12px;margin:0;min-width:0;text-align:left;font-family:var(--font-mono,monospace);
     font-size:.68rem;line-height:1.35;}
-  .rec-head-meta>div{display:inline-flex;gap:4px;align-items:baseline;min-width:0;}
+  .rec-head-meta>div{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px;align-items:baseline;min-width:0;}
   .rec-head-meta dt{color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
-  .rec-head-meta dd{margin:0;color:var(--ink);word-break:break-word;}
+  .rec-head-meta dd{margin:0;color:var(--ink);min-width:0;overflow-wrap:anywhere;}
   .rec-head-meta a{color:var(--accent);text-decoration:none;}
   /* the visible lineage identifier, the DOI-like recognizer under every title */
   .rec-doi{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
@@ -256,13 +259,13 @@
     .pg-nav{gap:8px;}
     .pg-nav a{font-size:.74rem;}
     .pg-top .controls .om-btn{padding:9px 9px;font-size:.78rem;}
-    .lin-bar{align-items:flex-start;padding:9px 16px;}
-    .lin-actions{gap:4px 12px;}
+    .lin-bar{display:grid;grid-template-columns:minmax(0,1fr);align-items:flex-start;padding:9px 16px;}
+    .lin-actions{justify-content:flex-start;gap:4px 12px;}
     .lin-ingress{padding:6px 16px 0;}
     .lin-ingress-row{grid-template-columns:1fr;}
     .lin-content{padding:10px 16px 32px;}
-    .rec-head{align-items:flex-start;flex-direction:column;gap:5px;}
-    .rec-head-meta{justify-content:flex-start;text-align:left;}
+    .rec-head{grid-template-columns:minmax(0,1fr);gap:5px;}
+    .rec-head-meta{grid-template-columns:minmax(0,1fr);width:100%;}
     .rec-lede{white-space:normal;}
     .rec-grid{grid-template-columns:1fr;}
   }
