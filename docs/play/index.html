@@ -1689,11 +1689,12 @@ function heavyHost(record){
   return null;
 }
 
-// The MCG compute deep link for a runnable lineage: #/new/<base node>, prefilled
-// with material and the temperature condition as query params so the wizard can
-// pre-populate. Mirrors the shipped experiment-page pattern.
+// The MCG compute deep link for a runnable lineage: #/new/<qualified node>,
+// prefilled with material and the temperature condition as query params so the
+// wizard can select the exact mapped pipeline. Mirrors the shipped
+// experiment-page pattern.
 function mcgRunUrl(lineage){
-  var url = MCG_BASE + '/#/new/' + encodeURIComponent(baseNode(lineage.node));
+  var url = MCG_BASE + '/#/new/' + encodeURIComponent(lineage.node);
   var qs = [];
   var mat = materialName(lineage.material);
   if (mat) qs.push('material=' + encodeURIComponent(mat));

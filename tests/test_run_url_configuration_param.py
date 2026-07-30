@@ -111,6 +111,18 @@ def test_play_no_pin_has_no_configuration_param():
     assert url == "https://app.materialscodegraph.com/#/new/ThermalConductivity?material=Si&conditions=T%20%3D%20300", url
 
 
+def test_play_preserves_the_qualified_composite_node():
+    url = _run_builder(
+        _PLAY, _PLAY_HELPERS,
+        "mcgRunUrl({node:'ThermalConductivity[effective_medium=nan,orientation=random]', material:'dgeba_gnp_5pct'})",
+    )
+    assert url == (
+        "https://app.materialscodegraph.com/#/new/"
+        "ThermalConductivity%5Beffective_medium%3Dnan%2Corientation%3Drandom%5D"
+        "?material=dgeba_gnp_5pct"
+    ), url
+
+
 def test_play_sha256_pin_passes_through_verbatim():
     url = _run_builder(
         _PLAY, _PLAY_HELPERS,
@@ -135,6 +147,18 @@ def test_experiment_no_pin_has_no_configuration_param():
     )
     assert "configuration=" not in url, url
     assert url == "https://app.materialscodegraph.com/#/new/ThermalConductivity?material=Si", url
+
+
+def test_experiment_preserves_the_qualified_composite_node():
+    url = _run_builder(
+        _EXPERIMENT, _EXPERIMENT_HELPERS,
+        "mcgRunUrl({variable:'ThermalConductivity[effective_medium=nan,orientation=random]', material:'dgeba_gnp_5pct'})",
+    )
+    assert url == (
+        "https://app.materialscodegraph.com/#/new/"
+        "ThermalConductivity%5Beffective_medium%3Dnan%2Corientation%3Drandom%5D"
+        "?material=dgeba_gnp_5pct"
+    ), url
 
 
 def test_experiment_sha256_pin_passes_through_verbatim():

@@ -169,7 +169,7 @@ function computableRec(recs){
 }
 
 // The MCG compute deep link for a runnable record: #/new/<node_id>, with the
-// base node id (the runnable kind), plus material and conditions passed as query
+// full qualified node id, plus material and conditions passed as query
 // params when trivially in scope so the wizard can prefill. Q1 (the canonical
 // card URL) is the owner's open call; where a back-link to this openmaterials
 // card is wanted, the PORTABLE #x= form is the self-contained shareable identity,
@@ -178,7 +178,7 @@ function computableRec(recs){
 // MCG-side and Q1 is undecided); the const and the base node keep it a one-line
 // add if the owner decides to include it.
 function mcgRunUrl(rec){
-  var url = MCG_BASE + '/#/new/' + encodeURIComponent(baseNode(rec.variable));
+  var url = MCG_BASE + '/#/new/' + encodeURIComponent(rec.variable);
   var qs = [];
   var mat = rec.material;
   if (mat != null && mat !== '') {
