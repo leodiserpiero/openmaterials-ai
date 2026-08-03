@@ -11,6 +11,10 @@ representation to the live map.  Every graph element is pinned by uid and the
 request pins the map-store head.  ``validate_external_solve_request`` repeats
 those checks on received JSON before an execution engine dispatches anything.
 Unknown, deprecated, superseded, or stale bindings therefore fail closed.
+
+Input and output bindings use the map identity's canonical uid order.  Their
+array position has no execution meaning: consumers resolve bindings by uid (and
+may cross-check the pinned name), never by positional adapter arguments.
 """
 from __future__ import annotations
 
@@ -302,12 +306,16 @@ def _require_live_entry(
 
 
 def _target_is_reachable(request: ExternalSolveRequest, snapshot: MapSnapshot) -> bool:
-    """Whether the target lies at or downstream of this external frontier."""
-    frontier = {binding.uid for binding in request.outputs}
-    if request.target.uid in frontier:
+    """Whether whole live hyperedges can derive the target from the frontier."""
+    # The external solve's inputs already exist at dispatch and its outputs are
+    # the newly produced values.  Both sides are therefore available to later
+    # hyperedges; unrelated co-inputs are not.
+    output_uids = {binding.uid for binding in request.outputs}
+    reached = {binding.uid for binding in (*request.inputs, *request.outputs)}
+    if request.target.uid in output_uids:
         return True
 
-    adjacency: dict[str, set[str]] = {}
+    hyperedges: list[tuple[frozenset[str], frozenset[str]]] = []
     for entry in snapshot.edges.values():
         if entry.get("deprecated") is True or entry.get("superseded_by"):
             continue
@@ -318,21 +326,24 @@ def _target_is_reachable(request: ExternalSolveRequest, snapshot: MapSnapshot) -
         outputs = identity.get("outputs")
         if not isinstance(inputs, list) or not isinstance(outputs, list):
             continue
+        if not inputs or not outputs:
+            continue
         if not all(isinstance(uid, str) for uid in (*inputs, *outputs)):
             continue
-        for input_uid in inputs:
-            adjacency.setdefault(input_uid, set()).update(outputs)
+        hyperedges.append((frozenset(inputs), frozenset(outputs)))
 
-    visited: set[str] = set()
-    while frontier:
-        current = frontier.pop()
-        if current in visited:
-            continue
-        visited.add(current)
-        for successor in adjacency.get(current, set()):
-            if successor == request.target.uid:
+    changed = True
+    while changed:
+        changed = False
+        for input_uids, output_uids in hyperedges:
+            if not input_uids.issubset(reached):
+                continue
+            new_outputs = output_uids - reached
+            if request.target.uid in new_outputs:
                 return True
-            frontier.add(successor)
+            if new_outputs:
+                reached.update(new_outputs)
+                changed = True
     return False
 
 
@@ -360,8 +371,8 @@ def _validate_live_bindings(request: ExternalSolveRequest, snapshot: MapSnapshot
         raise ExternalSolveBindingError("operator map entry has no identity object")
     stored_inputs = identity.get("inputs")
     stored_outputs = identity.get("outputs")
-    request_inputs = sorted(binding.uid for binding in request.inputs)
-    request_outputs = sorted(binding.uid for binding in request.outputs)
+    request_inputs = [binding.uid for binding in request.inputs]
+    request_outputs = [binding.uid for binding in request.outputs]
     if stored_inputs != request_inputs:
         raise ExternalSolveBindingError("request inputs do not match operator identity")
     if stored_outputs != request_outputs:
@@ -407,8 +418,18 @@ def build_external_solve_request(
     request = ExternalSolveRequest(
         map_version=live.version,
         operator=OperatorBinding(operator.name, operator_uid),
-        inputs=tuple(NodeBinding(space.name, node_id(space)) for space in operator.inputs),
-        outputs=tuple(NodeBinding(space.name, node_id(space)) for space in operator.outputs),
+        inputs=tuple(
+            sorted(
+                (NodeBinding(space.name, node_id(space)) for space in operator.inputs),
+                key=lambda binding: binding.uid,
+            )
+        ),
+        outputs=tuple(
+            sorted(
+                (NodeBinding(space.name, node_id(space)) for space in operator.outputs),
+                key=lambda binding: binding.uid,
+            )
+        ),
         target=NodeBinding(target_name, target_uid),
         representation=RepresentationBinding(
             name=_require_text(

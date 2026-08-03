@@ -9,6 +9,7 @@ import pytest
 from omai.execution import (
     EXTERNAL_SOLVE_REQUEST_SCHEMA,
     ExternalSolveBindingError,
+    ExternalSolveRequest,
     MapSnapshot,
     NodeBinding,
     build_external_solve_request,
@@ -62,6 +63,10 @@ def test_build_request_pins_live_graph_and_kaldo_capability() -> None:
         },
     }
     assert payload["lineage_id"] == lineage_id(_lineage())
+    live_edge = load_live_map_snapshot().edges[request.operator.uid]["identity"]
+    assert isinstance(live_edge, dict)
+    assert [binding.uid for binding in request.inputs] == live_edge["inputs"]
+    assert [binding.uid for binding in request.outputs] == live_edge["outputs"]
     assert validate_external_solve_request(payload) == request
 
 
@@ -158,6 +163,19 @@ def test_received_request_rejects_nodes_that_do_not_belong_to_operator() -> None
         validate_external_solve_request(forged.to_dict())
 
 
+def test_received_request_rejects_readdressed_noncanonical_input_order() -> None:
+    request = build_external_solve_request(
+        solve_bte_direct,
+        KALDO_SOLVE_BTE_DIRECT,
+        _lineage(),
+    )
+    assert len(request.inputs) > 1
+    reordered = replace(request, inputs=tuple(reversed(request.inputs)))
+
+    with pytest.raises(ExternalSolveBindingError, match="inputs do not match"):
+        validate_external_solve_request(reordered.to_dict())
+
+
 def test_request_rejects_live_but_unreachable_target() -> None:
     lineage = {
         "node": FREQUENCY_STATE.name,
@@ -173,7 +191,83 @@ def test_request_rejects_live_but_unreachable_target() -> None:
         )
 
 
-def test_received_request_rejects_tampering() -> None:
+def _request_with_synthetic_target(
+    *,
+    target_uid: str,
+    target_name: str,
+) -> tuple[ExternalSolveRequest, MapSnapshot]:
+    request = build_external_solve_request(
+        solve_bte_direct,
+        KALDO_SOLVE_BTE_DIRECT,
+        _lineage(),
+    )
+    live = load_live_map_snapshot()
+    nodes = deepcopy(live.nodes)
+    nodes[target_uid] = {
+        "identity": {"name": target_name},
+        "meta": {"name": target_name},
+    }
+    lineage = deepcopy(request.lineage)
+    lineage["node"] = target_name
+    lineage["node_uid"] = target_uid
+    return (
+        replace(
+            request,
+            target=NodeBinding(target_name, target_uid),
+            lineage=lineage,
+        ),
+        MapSnapshot(live.version, nodes, deepcopy(live.edges)),
+    )
+
+
+def test_request_rejects_target_when_hyperedge_coinput_is_unreachable() -> None:
+    target_uid = "1" * 64
+    unavailable_potential_uid = (
+        "80a4273845e09207860e06db18d1f1ee5670a9b9c8b1020a99928c872878f901"
+    )
+    request, snapshot = _request_with_synthetic_target(
+        target_uid=target_uid,
+        target_name="SyntheticTarget",
+    )
+    assert unavailable_potential_uid not in {
+        binding.uid for binding in (*request.inputs, *request.outputs)
+    }
+    snapshot.edges["2" * 64] = {
+        "identity": {
+            "inputs": [request.outputs[0].uid, unavailable_potential_uid],
+            "outputs": [target_uid],
+        },
+        "meta": {"name": "synthetic-multi-input-edge"},
+    }
+
+    with pytest.raises(ExternalSolveBindingError, match="not reachable downstream"):
+        validate_external_solve_request(request.to_dict(), snapshot=snapshot)
+
+
+def test_request_reaches_target_when_every_hyperedge_input_is_reachable() -> None:
+    target_uid = "4" * 64
+    intermediate_uid = "5" * 64
+    request, snapshot = _request_with_synthetic_target(
+        target_uid=target_uid,
+        target_name="SyntheticTarget",
+    )
+    frontier_uid = request.outputs[0].uid
+    snapshot.edges["6" * 64] = {
+        "identity": {"inputs": [frontier_uid], "outputs": [intermediate_uid]},
+        "meta": {"name": "synthetic-intermediate-edge"},
+    }
+    snapshot.edges["7" * 64] = {
+        "identity": {
+            "inputs": [frontier_uid, intermediate_uid],
+            "outputs": [target_uid],
+        },
+        "meta": {"name": "synthetic-multi-input-edge"},
+    }
+
+    assert validate_external_solve_request(request.to_dict(), snapshot=snapshot) == request
+
+
+def test_received_request_rejects_unaddressed_content_change() -> None:
     payload = build_external_solve_request(
         solve_bte_direct,
         KALDO_SOLVE_BTE_DIRECT,
