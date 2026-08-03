@@ -29,7 +29,8 @@
   "mirrors": {
     "FORCE_CONSTANTS_4TH": {
       "url": "https://app.materialscodegraph.com/runs/tan-i41md",
-      "provider": "materialscodegraph"
+      "provider": "materialscodegraph",
+      "access": "restricted"
     }
   }
 }

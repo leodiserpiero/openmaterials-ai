@@ -1131,6 +1131,92 @@ def test_mirror_without_provider_is_valid():
     assert rec["mirrors"]["traj/dump.xyz"] == "https://r2.example.com/dump.xyz"
 
 
+# --------------------------------------------------------------------------
+# The optional mirror `access` key: can a LOGGED-OUT reader fetch these bytes.
+# Same shape as `provider` (optional, outside identity, echoed onto the verify
+# report), but a CLOSED vocabulary, because a renderer must branch on it.
+# --------------------------------------------------------------------------
+
+def test_mirror_access_does_not_change_identity():
+    """`access` rides OUTSIDE identity exactly like the rest of the mirror
+    layer: the id is the same with it, without it, and with the other value."""
+    base = lin.record_light(lineage=_light_lineage(), name_to_uid=_NAME_TO_UID)["id"]
+    restricted = lin.record_light(
+        lineage=_light_lineage(),
+        artifacts=[_pointer(url=None, sha256=None)],
+        mirrors={"traj/dump.xyz": {"url": "https://r2.example.com/dump.xyz",
+                                   "provider": "materialscodegraph",
+                                   "access": "restricted"}},
+        name_to_uid=_NAME_TO_UID)
+    assert restricted["id"] == base
+    assert restricted["mirrors"]["traj/dump.xyz"]["access"] == "restricted"
+    public = lin.record_light(
+        lineage=_light_lineage(),
+        artifacts=[_pointer(url=None, sha256=None)],
+        mirrors={"traj/dump.xyz": {"url": "https://r2.example.com/dump.xyz",
+                                   "access": "public"}},
+        name_to_uid=_NAME_TO_UID)
+    assert public["id"] == base
+
+
+def test_mirror_access_round_trips_through_fragment():
+    """`access` survives record_to_fragment -> record_from_fragment intact: a
+    shared record must not lose the reason its link needs an account."""
+    rec = lin.record_light(
+        lineage=_light_lineage(),
+        artifacts=[_pointer(url=None, sha256=None)],
+        mirrors={"traj/dump.xyz": {"url": "https://r2.example.com/dump.xyz",
+                                   "access": "restricted"}},
+        name_to_uid=_NAME_TO_UID)
+    back = lin.record_from_fragment(lin.record_to_fragment(rec))
+    assert back["mirrors"]["traj/dump.xyz"]["access"] == "restricted"
+
+
+def test_mirror_access_echoed_onto_verify_report():
+    """verify_simulation echoes a declared access onto that artifact's report
+    entry, so an `unreachable` row is readable: bytes gone (a real staleness
+    finding) versus reader logged out (not a finding at all)."""
+    rec = lin.record_light(
+        lineage=_light_lineage(),
+        artifacts=[_pointer(url=None, sha256=_SHA_B)],
+        mirrors={"traj/dump.xyz": {"url": "https://r2.example.com/dump.xyz",
+                                   "access": "restricted"}},
+        name_to_uid=_NAME_TO_UID)
+    report = lin.verify_simulation(rec)  # no fetcher: unreachable, still echoes
+    entry = next(e for e in report["checked"] if e["path"] == "traj/dump.xyz")
+    assert entry["access"] == "restricted"
+    assert entry["status"] == "unreachable"
+
+
+def test_mirror_access_vocabulary_is_closed():
+    """Unlike free-form `provider`, `access` takes only the declared values: a
+    renderer decides whether to offer a plain link and cannot branch on an open
+    set, so an unrecognized state is a malformed mirror, not a passthrough."""
+    for bad in ("gated", "gated ", "gated-behind-sso", "Public", "", True, 1):
+        with pytest.raises(lin.LineageError, match="access"):
+            lin.record_light(
+                lineage=_light_lineage(),
+                artifacts=[_pointer(url=None, sha256=None)],
+                mirrors={"traj/dump.xyz": {"url": "https://r2.example.com/x",
+                                           "access": bad}},
+                name_to_uid=_NAME_TO_UID)
+
+
+def test_mirror_without_access_is_valid_and_states_nothing():
+    """`access` is optional and absence is NOT a claim of public: a mirror with
+    only a url still validates, and no access key is invented for it. The
+    honesty rule forbids upgrading silence into a promise."""
+    rec = lin.record_light(
+        lineage=_light_lineage(),
+        artifacts=[_pointer(url=None, sha256=None)],
+        mirrors={"traj/dump.xyz": {"url": "https://r2.example.com/dump.xyz"}},
+        name_to_uid=_NAME_TO_UID)
+    assert "access" not in rec["mirrors"]["traj/dump.xyz"]
+    report = lin.verify_simulation(rec)
+    entry = next(e for e in report["checked"] if e["path"] == "traj/dump.xyz")
+    assert "access" not in entry
+
+
 def test_record_light_no_node_no_artifacts_is_valid_and_flagged():
     """A light record with NO artifacts and NO node is valid (whatever we have):
     validate_light flags node-unresolved but does NOT reject. The lineage carries

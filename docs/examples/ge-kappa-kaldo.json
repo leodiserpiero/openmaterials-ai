@@ -30,7 +30,8 @@
   "mirrors": {
     "FORCE_CONSTANTS_3RD": {
       "url": "https://app.materialscodegraph.com/runs/ge-tersoff",
-      "provider": "materialscodegraph"
+      "provider": "materialscodegraph",
+      "access": "restricted"
     }
   }
 }

@@ -30,7 +30,8 @@
   "mirrors": {
     "FORCE_CONSTANTS": {
       "url": "https://app.materialscodegraph.com/runs/ptse2",
-      "provider": "materialscodegraph"
+      "provider": "materialscodegraph",
+      "access": "restricted"
     }
   }
 }

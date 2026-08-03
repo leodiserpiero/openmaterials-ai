@@ -31,7 +31,8 @@
   "mirrors": {
     "FORCE_CONSTANTS": {
       "url": "https://app.materialscodegraph.com/runs/si-elastic",
-      "provider": "materialscodegraph"
+      "provider": "materialscodegraph",
+      "access": "restricted"
     }
   }
 }

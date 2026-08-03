@@ -238,6 +238,9 @@
   .rec-art a:hover{text-decoration:underline;}
   .rec-art .rec-art-sha{display:block;font-family:var(--font-mono,monospace);font-size:.66rem;
     color:var(--muted);word-break:break-all;margin-top:2px;}
+  .rec-art-gate{display:inline-block;border:1px solid var(--line,#d9dbe0);border-radius:999px;
+    padding:0 7px;margin-left:6px;font-size:.62rem;font-weight:600;letter-spacing:.02em;
+    color:var(--muted);white-space:nowrap;vertical-align:baseline;}
   .rec-host{font-size:.78rem;line-height:1.4;color:var(--muted);margin:5px 0 0;}
   .rec-host a{color:var(--accent);text-decoration:none;font-weight:600;}
   .rec-host a:hover{text-decoration:underline;}
@@ -1680,13 +1683,34 @@ function heavyHost(record){
     var mk = Object.keys(mirrors);
     for (var i = 0; i < mk.length; i++) {
       var loc = mirrors[mk[i]];
-      if (loc && typeof loc === 'object' && loc.url) return { provider: loc.provider || 'the host', url: loc.url };
-      if (typeof loc === 'string' && loc) return { provider: 'the host', url: loc };
+      if (loc && typeof loc === 'object' && loc.url) return { provider: loc.provider || 'the host', url: loc.url, access: loc.access || null };
+      if (typeof loc === 'string' && loc) return { provider: 'the host', url: loc, access: null };
     }
   }
   var arts = record.artifacts || [];
-  for (var j = 0; j < arts.length; j++) { if (arts[j] && arts[j].url) return { provider: 'MaterialsCodeGraph', url: arts[j].url }; }
+  for (var j = 0; j < arts.length; j++) { if (arts[j] && arts[j].url) return { provider: 'MaterialsCodeGraph', url: arts[j].url, access: mirrorAccess(record, arts[j].path) }; }
   return null;
+}
+
+// The declared access state for one artifact path, from the mirrors resolver
+// layer: 'public', 'restricted', or null when the record states nothing. Absent
+// is NOT public; the caller must not upgrade silence into a promise.
+function mirrorAccess(record, path){
+  var mirrors = record && record.mirrors;
+  if (!mirrors || typeof mirrors !== 'object') return null;
+  var loc = mirrors[path];
+  if (loc && typeof loc === 'object' && loc.access) return loc.access;
+  return null;
+}
+
+// A link a logged-out reader can actually open is offered plainly. One behind
+// the host's access control is still SHOWN (the pointer is real and a reader
+// with an account wants it) but is labelled, so nobody is invited to click into
+// a login wall believing it is the open commons.
+function accessNote(access){
+  return access === 'restricted'
+    ? ' <span class="rec-art-gate">account required</span>'
+    : '';
 }
 
 // The MCG compute deep link for a runnable lineage: #/new/<base node>, prefilled
@@ -1817,7 +1841,10 @@ function artifactsHTML(record){
   if (Array.isArray(arts) && arts.length) {
     body += '<ul class="rec-arts">' + arts.map(function(a){
       if (!a || typeof a !== 'object') return '';
-      var link = a.url ? '<a href="' + esc(a.url) + '" target="_blank" rel="noopener">open &rarr;</a>' : '';
+      var access = mirrorAccess(record, a.path);
+      var link = a.url
+        ? '<a href="' + esc(a.url) + '" target="_blank" rel="noopener">open &rarr;</a>' + accessNote(access)
+        : '';
       return '<li class="rec-art">' +
         '<span class="rec-art-role">' + esc(a.role || 'artifact') + '</span>' +
         '<span class="rec-art-path">' + esc(a.path || '') + '</span>' +
@@ -1830,7 +1857,8 @@ function artifactsHTML(record){
   }
   if (host) {
     body += '<p class="rec-host">Heavy data hosted on ' + esc(host.provider) +
-      ': <a href="' + esc(host.url) + '" target="_blank" rel="noopener">open &rarr;</a></p>';
+      ': <a href="' + esc(host.url) + '" target="_blank" rel="noopener">open &rarr;</a>' +
+      accessNote(host.access) + '</p>';
   }
   return '<div class="rec-sec">' + body + '</div>';
 }

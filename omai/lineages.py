@@ -82,7 +82,11 @@ mirrors for reachability and checksum match when URLs are present and returns a
 dated report. A mirror entry may carry an optional free-form ``provider`` string
 naming who holds the bytes (e.g. "materialscodegraph", "zenodo"), outside
 identity like the rest of the mirror layer and echoed onto the report; the
-commons standardizes the key, not a registry of values. A record whose bytes
+commons standardizes the key, not a registry of values. It may also carry an
+optional ``access`` state, ``"public"`` or ``"restricted"``, saying whether a
+logged-out reader can fetch those bytes; that vocabulary IS closed, because a
+renderer has to branch on it to avoid offering a stranger a link that only
+answers with a login wall. A record whose bytes
 moved or whose mirror is down is stale, not invalid; the map owns identity, MCG
 owns the bytes.
 
@@ -469,17 +473,32 @@ def _validate_pointers(artifacts, *, where: str) -> None:
                 f"64-hex-character string")
 
 
+MIRROR_ACCESS = ("public", "restricted")
+
+
 def _validate_mirrors(mirrors, *, where: str) -> None:
     """Every mirror entry is well-formed, and nothing about it is mandatory.
 
     The resolver layer maps an artifact path to a location, either a bare url
-    string or an object ``{url?, provider?, ...}``. It is OUTSIDE identity
-    (:func:`lineage_id` never sees it), so this is only a shape check on an
-    optional dict: when a mirror entry is an object, its ``url`` (if present) is
-    a string and its ``provider`` (if present) is a string. ``provider`` is the
-    optional free-form name of who holds the bytes (e.g. "materialscodegraph",
+    string or an object ``{url?, provider?, access?, ...}``. It is OUTSIDE
+    identity (:func:`lineage_id` never sees it), so this is only a shape check on
+    an optional dict: when a mirror entry is an object, its ``url`` (if present)
+    is a string, its ``provider`` (if present) is a string, and its ``access``
+    (if present) is one of :data:`MIRROR_ACCESS`. ``provider`` is the optional
+    free-form name of who holds the bytes (e.g. "materialscodegraph",
     "zenodo"); the commons standardizes the KEY, not a registry of values, so a
     provider is any string. An absent or empty mirror layer is normal.
+
+    ``access`` says whether a LOGGED-OUT reader can fetch those bytes:
+    ``"public"`` or ``"restricted"``. Its vocabulary is CLOSED where
+    ``provider`` is free-form, and the asymmetry is deliberate. A provider name
+    is a label a reader interprets, so any string informs. Access is a CLAIM the
+    commons makes to a stranger about reachability, and a claim only means
+    something if a consumer can branch on it: a renderer must be able to decide
+    whether to present a plain "open" link, and it cannot branch on an open set.
+    An absent ``access`` states nothing and must not be read as "public"; a
+    record that never declares it is unchanged and still valid, because the
+    honesty rule forbids inventing a claim on an author's behalf.
     """
     if mirrors is None:
         return
@@ -500,6 +519,12 @@ def _validate_mirrors(mirrors, *, where: str) -> None:
             raise LineageError(
                 f"{where}: mirror {path!r} provider, when present, must be a "
                 f"string (who holds the bytes; free-form)")
+        access = loc.get("access")
+        if access is not None and access not in MIRROR_ACCESS:
+            raise LineageError(
+                f"{where}: mirror {path!r} access, when present, must be one of "
+                f"{', '.join(MIRROR_ACCESS)} (can a logged-out reader fetch "
+                f"these bytes); got {access!r}")
 
 
 def _validate_execution(execution, *, where: str) -> None:
@@ -682,7 +707,8 @@ def validate_light(record: dict, *, name_to_uid: dict | None = None,
       empty or absent list is normal.
     - ``mirrors`` (when present) is a well-formed resolver layer: each entry a
       url string or an object whose ``url`` and optional free-form ``provider``
-      (who holds the bytes) are strings. Outside identity; a shape check only.
+      (who holds the bytes) are strings, and whose optional ``access`` is
+      ``"public"`` or ``"restricted"``. Outside identity; a shape check only.
     - A named ``material.configuration`` MUST resolve to a committed
       configuration record under ``config_dir`` (default: the real
       ``docs/data/configurations/``): the structure pin sits inside the lineage
@@ -1504,14 +1530,16 @@ def verify_simulation(record: dict, *, fetcher=None, today=None) -> dict:
     Report shape::
 
         {"id": <record id>, "date": "YYYY-MM-DD", "checked": [
-            {"path", "role", "url", "provider"?, "status", ...}, ...]}
+            {"path", "role", "url", "provider"?, "access"?, "status", ...}, ...]}
 
     where ``status`` is ``ok`` (fetched, sha256 matches), ``mismatch`` (fetched,
     sha256 differs: reports expected/actual), ``unreachable`` (fetch failed or
     no url), or ``no-url`` (the artifact declares no location to check). When a
     mirror entry names a ``provider`` (who holds the bytes), it is echoed onto
     that artifact's report entry, closing the provenance loop; the key is
-    outside identity and the value is free-form.
+    outside identity and the value is free-form. A declared ``access`` is echoed
+    the same way, so a report reader can tell an ``unreachable`` that means the
+    bytes are gone from one that means the reader is simply logged out.
     """
     stamp = (today or date.today()).isoformat()
     artifacts = record.get("artifacts", []) or []
@@ -1523,9 +1551,11 @@ def verify_simulation(record: dict, *, fetcher=None, today=None) -> dict:
         loc = mirrors.get(path) if isinstance(mirrors, dict) else None
         url = None
         provider = None
+        access = None
         if isinstance(loc, dict):
             url = loc.get("url")
             provider = loc.get("provider")
+            access = loc.get("access")
         elif isinstance(loc, str):
             url = loc
         if url is None:
@@ -1536,6 +1566,10 @@ def verify_simulation(record: dict, *, fetcher=None, today=None) -> dict:
         # provenance carried outside identity, useful regardless of status.
         if provider is not None:
             entry["provider"] = provider
+        # Echo a declared access state for the same reason, and specifically so
+        # an `unreachable` row is readable: bytes gone versus reader logged out.
+        if access is not None:
+            entry["access"] = access
         if url is None:
             entry["status"] = "no-url"
             checked.append(entry)
