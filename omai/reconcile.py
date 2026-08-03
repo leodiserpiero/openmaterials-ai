@@ -52,7 +52,13 @@ def _text(value: object, field: str) -> str:
 
 def _json_copy(value: object, field: str) -> object:
     try:
-        return json.loads(canonical_json(value))
+        encoded = json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        return json.loads(encoded)
     except (TypeError, ValueError) as exc:
         raise ReconciliationError(f"{field} must be canonical-JSON-compatible") from exc
 
@@ -359,7 +365,7 @@ def _classify(
             state_key = "superseded_by" if op == "supersede" else "equivalent_to"
             targets = cast(list[str], payload[key])
             desired = payload.get("new_uids") if op == "supersede" else payload.get("uids")
-            now_states = [_entry(current, target).get(state_key) for target in targets]  # type: ignore[union-attr]
+            now_states = [(_entry(current, target) or {}).get(state_key) for target in targets]
             base_states = [(_entry(base, target) or {}).get(state_key) for target in targets]
             if all(state == desired for state in now_states):
                 no_ops.append({"index": index, "reason": f"identical {op} already exists"})

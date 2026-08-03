@@ -116,6 +116,21 @@ def test_bundle_is_canonical_and_rejects_branch_local_record_fields(tmp_path) ->
         )
 
 
+@pytest.mark.parametrize("non_finite", [float("nan"), float("inf"), float("-inf")])
+def test_bundle_rejects_non_finite_json_values(tmp_path, non_finite: float) -> None:
+    store, _ = _seed_store(tmp_path / "canonical")
+    node = _node("potential", "Potential")
+    node["meta"]["score"] = non_finite
+
+    with pytest.raises(ReconciliationError, match="canonical-JSON-compatible"):
+        MapChangeBundle.create(
+            base_version=store.head,
+            operations=[{"op": "add_node", "payload": node}],
+            author="contributor",
+            reason="invalid numeric metadata",
+        )
+
+
 def test_two_independent_forks_rebase_and_reapply_idempotently(tmp_path) -> None:
     canonical, base_node = _seed_store(tmp_path / "canonical")
     base = canonical.head
@@ -152,6 +167,42 @@ def test_two_independent_forks_rebase_and_reapply_idempotently(tmp_path) -> None
     assert canonical.head == head
     identity = {key: value for key, value in repeated.items() if key != "receipt_id"}
     assert repeated["receipt_id"] == hashlib.sha256(canonical_json(identity).encode()).hexdigest()
+
+
+def test_added_node_can_be_equated_in_the_same_ordered_bundle(tmp_path) -> None:
+    canonical, base_node = _seed_store(tmp_path / "canonical")
+    added_node = _node("potential", "Potential")
+    connected_edge = _edge("make_potential", [base_node["uid"]], added_node["uid"])
+    operation_uids = [base_node["uid"], added_node["uid"]]
+    bundle = MapChangeBundle.create(
+        base_version=canonical.head,
+        operations=[
+            {"op": "add_node", "payload": added_node},
+            {"op": "add_edge", "payload": connected_edge},
+            {
+                "op": "equate",
+                "payload": {"uids": operation_uids, "note": "reviewed equivalence"},
+            },
+        ],
+        author="contributor",
+        reason="add and equate connected node",
+    )
+
+    dry_run = reconcile_change_bundle(canonical, bundle)
+    assert dry_run["conflicts"] == []
+    assert [row["op"] for row in dry_run["accepted"]] == ["add_node", "add_edge", "equate"]
+
+    receipt = reconcile_change_bundle(canonical, bundle, apply=True, date="2026-08-03")
+    assert receipt["conflicts"] == []
+    assert len(receipt["record_versions"]) == 3
+    assert canonical.verify() == []
+    assert canonical.read()["nodes"][added_node["uid"]]["equivalent_to"] == operation_uids
+
+    repeated = reconcile_change_bundle(canonical, bundle, apply=True, date="2026-08-03")
+    assert repeated["conflicts"] == []
+    assert repeated["accepted"] == []
+    assert len(repeated["no_ops"]) == 3
+    assert repeated["record_versions"] == []
 
 
 def test_same_field_metadata_edits_conflict_but_matching_value_is_noop(tmp_path) -> None:
