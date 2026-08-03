@@ -309,10 +309,12 @@ def _target_is_reachable(request: ExternalSolveRequest, snapshot: MapSnapshot) -
     """Whether whole live hyperedges can derive the target from the frontier."""
     # The external solve's inputs already exist at dispatch and its outputs are
     # the newly produced values.  Both sides are therefore available to later
-    # hyperedges; unrelated co-inputs are not.
-    output_uids = {binding.uid for binding in request.outputs}
+    # hyperedges; unrelated co-inputs are not.  Taint starts only at the solve
+    # outputs and propagates through a ready edge, so the target must actually
+    # depend on the external result rather than merely on its inputs.
+    tainted = {binding.uid for binding in request.outputs}
     reached = {binding.uid for binding in (*request.inputs, *request.outputs)}
-    if request.target.uid in output_uids:
+    if request.target.uid in tainted:
         return True
 
     hyperedges: list[tuple[frozenset[str], frozenset[str]]] = []
@@ -339,12 +341,17 @@ def _target_is_reachable(request: ExternalSolveRequest, snapshot: MapSnapshot) -
             if not input_uids.issubset(reached):
                 continue
             new_outputs = output_uids - reached
-            if request.target.uid in new_outputs:
-                return True
             if new_outputs:
                 reached.update(new_outputs)
                 changed = True
-    return False
+            if input_uids.intersection(tainted):
+                new_tainted = output_uids - tainted
+                if new_tainted:
+                    tainted.update(new_tainted)
+                    changed = True
+            if request.target.uid in tainted:
+                return True
+    return request.target.uid in tainted
 
 
 def _validate_live_bindings(request: ExternalSolveRequest, snapshot: MapSnapshot) -> None:

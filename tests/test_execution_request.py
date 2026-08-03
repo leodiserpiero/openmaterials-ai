@@ -22,7 +22,11 @@ from omai.thermal_transport.operator.edges import (
     contract_kappa_direct,
     solve_bte_direct,
 )
-from omai.thermal_transport.operator.nodes import FREQUENCY_STATE, THERMAL_CONDUCTIVITY_DIRECT
+from omai.thermal_transport.operator.nodes import (
+    ENTROPY,
+    FREQUENCY_STATE,
+    THERMAL_CONDUCTIVITY_DIRECT,
+)
 from omai.thermal_transport.representation.kaldo import (
     KALDO_CONTRACT_KAPPA_DIRECT,
     KALDO_SOLVE_BTE_DIRECT,
@@ -180,6 +184,21 @@ def test_request_rejects_live_but_unreachable_target() -> None:
     lineage = {
         "node": FREQUENCY_STATE.name,
         "node_uid": node_id(FREQUENCY_STATE),
+        "material": "Si",
+        "conditions": {"bte_solver": "direct_inverse"},
+    }
+    with pytest.raises(ExternalSolveBindingError, match="not reachable downstream"):
+        build_external_solve_request(
+            solve_bte_direct,
+            KALDO_SOLVE_BTE_DIRECT,
+            lineage,
+        )
+
+
+def test_request_rejects_target_derived_only_from_external_inputs() -> None:
+    lineage = {
+        "node": ENTROPY.name,
+        "node_uid": node_id(ENTROPY),
         "material": "Si",
         "conditions": {"bte_solver": "direct_inverse"},
     }
