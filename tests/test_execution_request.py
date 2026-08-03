@@ -100,6 +100,24 @@ def test_request_is_deterministic_but_execution_does_not_change_lineage_identity
     assert first.lineage_id == rerun.lineage_id == lineage_id(_lineage())
 
 
+@pytest.mark.parametrize("non_finite", [float("nan"), float("inf"), float("-inf")])
+@pytest.mark.parametrize("field_name", ["lineage", "execution"])
+def test_received_request_rejects_readdressed_non_finite_json(
+    non_finite: float,
+    field_name: str,
+) -> None:
+    request = build_external_solve_request(
+        solve_bte_direct,
+        KALDO_SOLVE_BTE_DIRECT,
+        _lineage(),
+    )
+    forged_value = {"non_finite": non_finite}
+    forged = replace(request, **{field_name: forged_value})
+
+    with pytest.raises(ExternalSolveBindingError, match="canonical-JSON-compatible"):
+        validate_external_solve_request(forged.to_dict())
+
+
 def test_request_rejects_locally_executable_edge() -> None:
     with pytest.raises(ExternalSolveBindingError, match="locally executable"):
         build_external_solve_request(

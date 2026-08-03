@@ -58,7 +58,14 @@ class ExternalSolveBindingError(ValueError):
 def _json_object_copy(value: Mapping[str, object], *, field_name: str) -> dict[str, object]:
     """Return a detached, canonical-JSON-compatible object."""
     try:
-        copied = json.loads(canonical_json(dict(value)))
+        copied = json.loads(
+            json.dumps(
+                dict(value),
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+        )
     except (TypeError, ValueError) as exc:
         raise ExternalSolveBindingError(
             f"{field_name} must be a canonical-JSON-compatible object"
