@@ -53,6 +53,13 @@ non-exclusive CC BY 4.0 license, never a transfer, and the raw simulation or
 experimental artifacts behind a value are never ingested (GOVERNANCE.md, "Data
 ownership and fairness").
 
+To extend the map on a local fork, follow the
+[local map workflow](docs/local-map-workflow.md). It explains the difference
+between stable element uids and the history-dependent map head, how to package
+semantic operations as a content-addressed change bundle, and why divergent
+`map/log.jsonl` tails must be reconciled through the existing gates instead of
+merged as raw Git lines.
+
 ## Share an experiment with a link
 
 Every instance carries a provenance reference (`source.ref`), and that ref is
