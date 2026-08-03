@@ -48,14 +48,44 @@ def test_record_is_valid_light_and_id_recomputes(path):
 # Hosts known to sit behind an access control: a logged-out reader following a
 # pointer here gets a login redirect, not the bytes. Verified 2026-08-03 by
 # fetching https://app.materialscodegraph.com/runs/si-tersoff-rta logged out,
-# which answered 302 to dvnclabs.cloudflareaccess.com with auth_status NONE.
-# Public run pages are a platform gate; until they land, the map must not
-# present these as if a stranger could open them.
+# which answered 302 to an identity-provider login endpoint reporting
+# auth_status NONE. Public run pages are a platform gate; until they land, the
+# map must not present these as if a stranger could open them.
 _GATED_HOSTS = ("app.materialscodegraph.com",)
 
 
 def _gated(url: str) -> bool:
     return isinstance(url, str) and any(h in url for h in _GATED_HOSTS)
+
+
+def _assert_gallery_pointers_declare_restricted_access(rec, name):
+    """The guard body, callable on any record.
+
+    Extracted from the parametrized test below so the negative witness can
+    invoke the REAL guard against mutated inputs instead of re-implementing it.
+    A witness that asserts a key it just set proves nothing about this code.
+    """
+    mirrors = rec.get("mirrors") or {}
+
+    for key, loc in mirrors.items():
+        url = loc.get("url") if isinstance(loc, dict) else loc
+        if not _gated(url):
+            continue
+        assert isinstance(loc, dict), (
+            f"{name}: mirror {key!r} points at a gated host as a bare "
+            f"string, so it cannot declare access; use an object")
+        assert loc.get("access") == "restricted", (
+            f"{name}: mirror {key!r} points at a gated host but declares "
+            f"access={loc.get('access')!r}; it must declare 'restricted'")
+
+    for art in rec.get("artifacts") or []:
+        if not _gated(art.get("url")):
+            continue
+        loc = mirrors.get(art.get("path"))
+        assert isinstance(loc, dict) and loc.get("access") == "restricted", (
+            f"{name}: artifact {art.get('path')!r} carries a gated url but "
+            f"its mirror entry does not declare access='restricted', so the "
+            f"renderer has nothing to label it with")
 
 
 @pytest.mark.parametrize("path", _RECORDS, ids=lambda p: p.stem)
@@ -67,45 +97,66 @@ def test_gallery_pointers_declare_restricted_access(path):
     have a mirror entry for its path saying the same, because the renderer reads
     the access state from the resolver layer keyed by path. Absence is not
     "public" anywhere in the contract; here, on the public gallery, absence is a
-    defect. This fails closed on a newly added example, which is the point.
+    defect.
     """
-    rec = json.loads(path.read_text())
-    mirrors = rec.get("mirrors") or {}
+    _assert_gallery_pointers_declare_restricted_access(
+        json.loads(path.read_text()), path.name)
 
-    for key, loc in mirrors.items():
-        url = loc.get("url") if isinstance(loc, dict) else loc
-        if not _gated(url):
-            continue
-        assert isinstance(loc, dict), (
-            f"{path.name}: mirror {key!r} points at a gated host as a bare "
-            f"string, so it cannot declare access; use an object")
-        assert loc.get("access") == "restricted", (
-            f"{path.name}: mirror {key!r} points at a gated host but declares "
-            f"access={loc.get('access')!r}; it must declare 'restricted'")
 
-    for art in rec.get("artifacts") or []:
-        if not _gated(art.get("url")):
-            continue
-        loc = mirrors.get(art.get("path"))
-        assert isinstance(loc, dict) and loc.get("access") == "restricted", (
-            f"{path.name}: artifact {art.get('path')!r} carries a gated url but "
-            f"its mirror entry does not declare access='restricted', so the "
-            f"renderer has nothing to label it with")
+def _gated_record():
+    """A minimal record whose mirror and artifact both point at a gated host."""
+    return {
+        "artifacts": [{"path": "t/x", "role": "output",
+                       "url": "https://app.materialscodegraph.com/runs/x"}],
+        "mirrors": {"t/x": {"url": "https://app.materialscodegraph.com/runs/x",
+                            "provider": "materialscodegraph",
+                            "access": "restricted"}},
+    }
 
 
 def test_gallery_gate_guard_actually_bites():
-    """The guard above must reject a gated pointer that declares nothing.
+    """The guard must REJECT each way a gated pointer can fail to declare itself.
 
-    A real-data assertion that never fails is decoration, so this constructs the
-    exact defect the repository just fixed and proves the check catches it.
+    A real-data assertion that never fails is decoration. The previous version of
+    this test set a dict key and then asserted the key was set, which exercised
+    nothing: it never called the guard. This one calls the real guard body, the
+    same function the parametrized test above runs, and requires it to raise.
     """
-    rec = {"mirrors": {"t/x": {"url": "https://app.materialscodegraph.com/runs/x",
-                               "provider": "materialscodegraph"}}}
-    loc = rec["mirrors"]["t/x"]
-    assert _gated(loc["url"])
-    assert loc.get("access") != "restricted"  # the defect, undeclared
-    loc["access"] = "restricted"
-    assert loc.get("access") == "restricted"  # and what repairs it
+    # Positive control first: the well-formed record must PASS, so a guard that
+    # rejected everything could not masquerade as this witness.
+    _assert_gallery_pointers_declare_restricted_access(_gated_record(), "ok")
+
+    # 1. access absent, which is exactly main's state before this change.
+    rec = _gated_record()
+    del rec["mirrors"]["t/x"]["access"]
+    with pytest.raises(AssertionError, match="must declare 'restricted'"):
+        _assert_gallery_pointers_declare_restricted_access(rec, "no-access")
+
+    # 2. access present but claiming the gated host is open. The worst case,
+    #    because it is an active false claim rather than silence.
+    rec = _gated_record()
+    rec["mirrors"]["t/x"]["access"] = "public"
+    with pytest.raises(AssertionError, match="must declare 'restricted'"):
+        _assert_gallery_pointers_declare_restricted_access(rec, "claims-public")
+
+    # 3. out-of-vocabulary value: it is not 'restricted', so it must not pass.
+    rec = _gated_record()
+    rec["mirrors"]["t/x"]["access"] = "gated"
+    with pytest.raises(AssertionError, match="must declare 'restricted'"):
+        _assert_gallery_pointers_declare_restricted_access(rec, "bad-vocab")
+
+    # 4. mirror downgraded to a bare string url, so it cannot declare anything.
+    rec = _gated_record()
+    rec["mirrors"]["t/x"] = "https://app.materialscodegraph.com/runs/x"
+    with pytest.raises(AssertionError, match="use an object"):
+        _assert_gallery_pointers_declare_restricted_access(rec, "bare-string")
+
+    # 5. the artifact branch specifically: a gated artifact url whose path has
+    #    no mirror entry at all, so the renderer has nothing to label it with.
+    rec = _gated_record()
+    rec["mirrors"] = {}
+    with pytest.raises(AssertionError, match="renderer has nothing to label"):
+        _assert_gallery_pointers_declare_restricted_access(rec, "no-mirror")
 
 
 def test_index_matches_the_record_files_exactly():

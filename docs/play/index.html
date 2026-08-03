@@ -1046,6 +1046,30 @@ function validateLightJS(record){
         return { ok: false, error: 'artifact ' + i + ' sha256, when present, must be a 64-hex string.' };
     }
   }
+  // The mirrors layer, mirroring _validate_mirrors in omai/lineages.py. This is
+  // where a stranger's record enters: paste, upload and the #x= fragment path
+  // all land here and none of them runs the Python validator, so a vocabulary
+  // enforced only in Python is not enforced where it matters. 'provider' stays
+  // free-form (a label a reader interprets), 'access' does not: it is a closed
+  // vocabulary because a renderer must branch on it, and no renderer can branch
+  // on an open set. Absence is valid and states nothing.
+  var mirrors = record.mirrors;
+  if (mirrors != null) {
+    if (typeof mirrors !== 'object' || Array.isArray(mirrors))
+      return { ok: false, error: 'mirrors, when present, must be an object keyed by artifact path.' };
+    var paths = Object.keys(mirrors);
+    for (var m = 0; m < paths.length; m++) {
+      var loc = mirrors[paths[m]];
+      if (!loc || typeof loc !== 'object' || Array.isArray(loc))
+        return { ok: false, error: 'mirror ' + JSON.stringify(paths[m]) + ' must be an object {url?, provider?, access?}.' };
+      if (loc.url != null && typeof loc.url !== 'string')
+        return { ok: false, error: 'mirror ' + JSON.stringify(paths[m]) + ' url, when present, must be a string.' };
+      if (loc.provider != null && typeof loc.provider !== 'string')
+        return { ok: false, error: 'mirror ' + JSON.stringify(paths[m]) + ' provider, when present, must be a string.' };
+      if (loc.access != null && loc.access !== 'public' && loc.access !== 'restricted')
+        return { ok: false, error: 'mirror ' + JSON.stringify(paths[m]) + ' access, when present, must be one of public, restricted.' };
+    }
+  }
   // node-unresolved is VALID (the honesty rule): a named-but-off-map node, or no
   // node at all, is reported, never rejected. renderLineage shows the flag.
   var nodeResolved = !!(node && nodeById[node]);
@@ -1707,10 +1731,23 @@ function mirrorAccess(record, path){
 // the host's access control is still SHOWN (the pointer is real and a reader
 // with an account wants it) but is labelled, so nobody is invited to click into
 // a login wall believing it is the open commons.
+//
+// FAILS CLOSED, and the asymmetry is the point. Absence states nothing so it
+// renders nothing: silence is not a promise in either direction, and the map has
+// always carried records that simply do not speak about access. An explicit
+// 'public' is a claim the author made, and rendering nothing is what honouring
+// that claim looks like. EVERY OTHER PRESENT VALUE renders the label. A value
+// outside the closed vocabulary is a record trying to say something this
+// renderer cannot read, and the safe reading of an unreadable access state is
+// "you may hit a wall", never "walk in". Rendering silence there is exactly how
+// 'gated', 'RESTRICTED' or 'restricted ' would turn a wall back into a door,
+// which is the defect this whole change exists to remove. Python's
+// validate_light refuses those values, but paste, upload and the #x= fragment
+// path all reach this renderer without ever running it, so this function must
+// not assume it has been validated.
 function accessNote(access){
-  return access === 'restricted'
-    ? ' <span class="rec-art-gate">account required</span>'
-    : '';
+  if (access == null || access === 'public') return '';
+  return ' <span class="rec-art-gate">account required</span>';
 }
 
 // The MCG compute deep link for a runnable lineage: #/new/<base node>, prefilled
