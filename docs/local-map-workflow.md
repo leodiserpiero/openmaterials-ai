@@ -45,7 +45,7 @@ conflict-merging their `map/log.jsonl` lines creates a broken chain.
      "operations": [{"op": "add_node", "payload": {}}],
      "author": "your-name",
      "reason": "what this contribution adds",
-     "source_head": "<optional verified local head>",
+     "source_head": "<optional contributor-supplied local head>",
      "bundle_id": "<derived by MapChangeBundle>"
    }
    ```
@@ -56,7 +56,10 @@ conflict-merging their `map/log.jsonl` lines creates a broken chain.
 5. Copy the base store to a throwaway directory, apply the local semantic
    operations through `Store.propose`, and run `Store.verify()` plus the
    relevant tests. The resulting local head can be included as `source_head`
-   provenance; it is not asserted to be the future canonical head.
+   provenance; it is not asserted to be the future canonical head. The
+   reconciler checks only that this optional value has hash form. A reviewer or
+   caller must separately verify the contributor's source store before calling
+   the provenance verified.
 
 6. Dry-run the reviewed bundle against the current canonical store:
 
